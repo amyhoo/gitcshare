@@ -1,0 +1,29 @@
+package test;
+import java.net.URL;
+import java.net.URLConnection;
+import java.io.InputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+public class UrlTest {
+	private static String connURL = "http://www.sina.com.cn";
+	public static void main(String args[]) {
+		UrlTest mainClass = new UrlTest();
+		mainClass.connectToUrl (connURL);
+	}
+	private void connectToUrl(String dispatcherURL) {
+		try {
+			URL url = new URL(dispatcherURL);
+			URLConnection urlcon = url.openConnection();
+			InputStream is = urlcon.getInputStream();
+	        BufferedReader buffer = new BufferedReader(new InputStreamReader(is));
+	        StringBuffer bs = new StringBuffer();
+	        String l = null;
+	        while((l=buffer.readLine())!=null){
+	            bs.append(l).append("/n");
+	        }
+	        System.out.println(bs.toString());					
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+}

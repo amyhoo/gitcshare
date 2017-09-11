@@ -1,0 +1,36 @@
+[
+	{
+		"step":"export",
+		"parameters":{
+			"archive":"AmyExportTestUAT",
+			"env":"UAT",
+			"path":["/content/package[@name='Audit']","/content/folder[@name='Home']/folder[@name='Archive']"]
+		}
+	},
+	{
+		"step":"export",
+		"parameters":{
+			"archive":"AmyExportTestDEV",
+			"env":"DEV",
+			"path":["/content/package[@name='Audit']","/content/folder[@name='Home']/folder[@name='Archive']"]
+		}
+	},
+	{
+		"step":"movefile",
+		"parameters":{
+			"localfile":"D:/JsonUtils.java",
+            "remoteip":"cogad1",
+            "remotedir":"/data/home/a390925",
+            "username":"a390925",
+            "password":""
+		}
+	},
+	{
+		"step":"import",
+		"parameters":{
+			"archive":"AmyImportTestUAT",
+			"env":"UAT",
+			"file":"AmyExportTestDEV"
+		}
+	}
+]

@@ -1,0 +1,248 @@
+package AutoDeploy;
+
+import common.CognosLogOn;
+import common.ExecutionStep;
+
+import com.cognos.developer.schemas.bibus._3.*;
+
+import org.apache.axis.client.Stub;
+import org.apache.axis.message.SOAPHeaderElement;
+import javax.xml.namespace.QName;
+
+//import com.cognos.developer.schemas.bibus._3.holders.*;
+import org.apache.axis.AxisFault;
+import org.apache.axis.AxisEngine;
+import java.net.MalformedURLException;
+import java.rmi.RemoteException;
+import java.io.*;
+import java.util.*;
+import javax.xml.rpc.ServiceException;
+
+public class ImportContent implements ExecutionStep{
+	CognosLogOn conn = null;
+	ContentManagerService_PortType cmService = null;
+	MonitorService_PortType mService = null;
+
+	String environment = null;
+	String impFile = null;
+	String impName = null;
+
+	private HashMap packageInformation = null;
+	private String deployType = "import";
+	private String strLocale = "en";
+
+	private static final String DEPLOY_OPTION_NAME = "com.cognos.developer.schemas.bibus._3.DeploymentOptionObjectInformationArray";
+
+	public ImportContent() {
+
+	}
+
+	public ImportContent(String environment_string, String archive, String importName) {
+		impFile = archive;
+		impName = importName;
+		environment = environment_string;
+	}
+
+	public void init() {
+		conn = new CognosLogOn(environment);
+		cmService = conn.getContentManagerService();
+		mService = conn.getMonitorService();
+		((Stub) cmService).setTimeout(0); // in milliseconds, 0 turns the timeout off											
+		((Stub) mService).setTimeout(0); // in milliseconds, 0 turns the timeout off										
+		conn.logonToCognos();
+	}
+
+	public static void main(String[] args) {		
+		int args_len = args.length;
+		String temp1=null,temp2=null,temp3=null;
+		if (args.length < 1) {
+			// If archiveName is more than one word, put it in quotes, ex. "SDK
+			// Import"
+			printUsage();
+		}
+		for (int i = 0; i < args_len; i++) {
+
+			if (args[i].compareToIgnoreCase("-e") == 0) // deploymentName from
+				temp1 = args[++i];									// Archive
+				
+			else if (args[i].compareToIgnoreCase("-a") == 0 ) // my import Name (
+																// imp_DeploymentSpec)
+				temp2 = args[++i];
+			else if (args[i].compareToIgnoreCase("-d") == 0) // my import Name (
+				// imp_DeploymentSpec)
+				temp3 = args[++i];
+			else
+				displayHelp();
+		} // for
+		ImportContent imp = new ImportContent(temp1,temp2,temp3);
+		System.out.println("\nExisting Archive: " + imp.impFile);
+		System.out.println("\nImporting as: " + imp.impName);
+
+		if (imp.impFile != null) // existing Export Archive (
+									// "ExportSample_SDK" )
+		{
+			String imported = imp.deployContent();
+
+			if (imported == "false")
+				System.out.println("Problems occured while importing archive in CM " + imp.impFile);
+			else {
+				System.out.println("\nImport was sucessful");
+			}
+		} else
+			System.out.println("No Valid Archive Name Provided.");
+
+	} // main
+
+
+
+	// sn_dg_sdk_method_contentManagerService_getDeploymentOptions_start_0
+	public Option[] getDeployedOption(String myArchive) {
+		Option[] deployOptEnum = new Option[] {};
+
+		try {
+			// deployOptEnum = cmService.getDeploymentOptions( myArchive, opt);
+			deployOptEnum = cmService.getDeploymentOptions(myArchive, new Option[] {});
+		} catch (RemoteException e) {
+			System.out.println(
+					"An error occurred in getting Deployment options." + "\n" + "The error: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		return deployOptEnum;
+	} // getDeployedOption
+
+	public String deployContent() {
+		return deployContent(impFile, impName);
+	}
+
+	public String deployContent(String strNewImportName, String strDeployedArchive) {
+		init();
+		AsynchReply asynchReply = null;
+		String reportEventID = "false";
+
+		String deployPath = null;
+		SearchPathSingleObject searchPathObject = new SearchPathSingleObject();
+
+		// Add an archive name to the content store
+		BaseClass[] ArchiveInfo = addArchive(deployType, strNewImportName);
+
+		if ((ArchiveInfo != null) && (ArchiveInfo.length == 1)) {
+			deployPath = ArchiveInfo[0].getSearchPath().getValue();
+			searchPathObject.set_value(deployPath);
+			System.out.println("\nImport Archive Created: " + deployPath);
+		} else {
+			return reportEventID;
+		}
+
+		Option[] myDeploymentOptionsEnum = null;
+		myDeploymentOptionsEnum = getDeployedOption(strDeployedArchive);
+		OptionArrayProp deploymentOptionsArray = new OptionArrayProp();
+		deploymentOptionsArray.setValue(myDeploymentOptionsEnum);
+
+		((ImportDeployment) ArchiveInfo[0]).setOptions(deploymentOptionsArray);
+
+		try {
+			cmService.update(ArchiveInfo, new UpdateOptions());
+			asynchReply = ((MonitorService_PortType) conn.ServiceWithHeader((Stub) mService)).run(searchPathObject,
+					new ParameterValue[] {}, new Option[] {});
+
+			// if it has not yet completed, keep waiting until it is done
+
+			if (asynchReply.getStatus() != AsynchReplyStatusEnum.complete
+					|| asynchReply.getStatus() != AsynchReplyStatusEnum.conversationComplete) {
+				while (asynchReply.getStatus() != AsynchReplyStatusEnum.complete
+						&& asynchReply.getStatus() != AsynchReplyStatusEnum.conversationComplete) {
+					if (conn.hasSecondaryRequest(asynchReply, "wait")) {
+						System.out.println("waiting...");
+						asynchReply = ((MonitorService_PortType) conn.ServiceWithHeader((Stub) mService))
+								.wait(asynchReply.getPrimaryRequest(), new ParameterValue[] {}, new Option[] {});
+					} else {
+						System.out.println("Error: Wait method not available as expected.");
+					}
+				}
+			}
+
+		} catch (RemoteException remoteEx) {
+			System.out.println("An error occurred while deploying content:" + "\n" + remoteEx.getMessage());
+			remoteEx.printStackTrace();
+		}
+
+		if (asynchReply != null)
+			reportEventID = "Success";
+
+		return reportEventID;
+	}// deployContent
+
+	// Print usage of the script
+	public static void printUsage() {
+		String usage = "\njava Import -a <archiveName> [-d deploymentName] [-s <namespaceID> -u <userID> -p <userPassword>] [-g <CognosBIDispatcher>]";
+		String example = "Example: \njava Import -a CMarchive  -d CMarchive_import -s \"LDAPID\" -u \"User\" -p \"UserPassword\" -g http://server:9300/p2pd/servlet/dispatch";
+
+		System.out.println(usage);
+		System.out.println(example);
+		displayHelp();
+		System.exit(1);
+	}
+
+	// Displays help
+	public static void displayHelp() {
+		String usage = "";
+		usage += "Import the contents of a Deployment archive.\n\n";
+		usage += "Usage:\n\n";
+		usage += "-a archiveName\n\tThe name of the new archive\n";
+		usage += "-d deploymentName\n\tThe name of the new import deployment (optional. Can be used to resolve naming conflicts with existing export deployments)\n";
+		usage += "-s namespaceID\n\tNamespaceID the user belongs to.\n";
+		usage += "-u userID\n\tUserID of a System Administrator.\n";
+		usage += "-p userPassword\n\tPassword for the UserID.\n";
+		usage += "-g CognosBIDispatcher\n\tDispatcher URL for Cognos BI.\n";
+		usage += "\t Default: http://localhost:9300/p2pd/servlet/dispatch\n";
+
+		System.out.println(usage);
+		System.exit(1);
+	}
+
+	private BaseClass[] addArchive(String deploySpec, String nameOfArchive) {
+
+		ImportDeployment importDeploy = null;
+		BaseClass[] addedDeploymentObjects = null;
+		BaseClass[] bca = new BaseClass[1];
+		AddOptions addOpts = null;
+
+		SearchPathSingleObject objOfSearchPath = new SearchPathSingleObject("/adminFolder/adminFolder[@name='Import']");
+
+		MultilingualTokenProp multilingualTokenProperty = new MultilingualTokenProp();
+		MultilingualToken[] multilingualTokenArr = new MultilingualToken[1];
+		MultilingualToken myMultilingualToken = new MultilingualToken();
+
+		myMultilingualToken.setLocale(strLocale);
+		myMultilingualToken.setValue(nameOfArchive);
+		multilingualTokenArr[0] = myMultilingualToken;
+		multilingualTokenProperty.setValue(multilingualTokenArr);
+
+		importDeploy = new ImportDeployment();
+		addOpts = new AddOptions();
+		importDeploy.setName(multilingualTokenProperty);
+		addOpts.setUpdateAction(UpdateActionEnum.replace);
+		bca[0] = importDeploy;
+
+		try {
+			addedDeploymentObjects = cmService.add(objOfSearchPath, bca, addOpts);
+		} catch (RemoteException remoEx) {
+			System.out.println("An error occurred when adding a deployment object:" + "\n" + remoEx.getMessage());
+		}
+		if ((addedDeploymentObjects != null) && (addedDeploymentObjects.length > 0)) {
+			return addedDeploymentObjects;
+		} else {
+			return null;
+		}
+	} // addArchive
+
+	@Override
+	public void execute(Map map) throws Exception {
+		// TODO Auto-generated method stub
+		environment =(String) map.get("env");
+		impFile =(String) map.get("archive");
+		impName = (String) map.get("path");
+		deployContent();		
+	}
+}

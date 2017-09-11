@@ -1,0 +1,12 @@
+{
+ DEV2UAT:{
+	packages:{	
+	 from:"/content/package[@name='Audit']",
+	 to:"/content/package[@name='Audit']",
+	}
+	reports:{
+	from:"/content/folder[@name='Home']/folder[@name='Archive_test']/report[@name='Assessed Cost Vs Invoiced Cost Drillthrough Report_tested']",
+	to:"/content/folder[@name='Home']/folder[@name='Archive_test']/report[@name='Assessed Cost Vs Invoiced Cost Drillthrough Report_tested']",
+	} 
+ }
+}
